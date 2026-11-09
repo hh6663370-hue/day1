@@ -43,20 +43,35 @@ class SummarizerTests(unittest.TestCase):
         self.assertEqual(len(chain.calls), 3)
 
     def test_environment_controls_maximum_attempts(self):
-        with patch.dict('os.environ', {'QWEN_MAX_ATTEMPTS': '5', 'QWEN_RETRY_DELAY_SECONDS': '0'}):
+        with patch.dict('os.environ', {'QWEN_MAX_ATTEMPTS': '5', 'QWEN_RETRY_DELAY_SECONDS': '0', 'DASHSCOPE_API_KEY': 'test-key'}):
             settings = Settings.load()
         chain = FakeChain([RuntimeError('失败')] * 4 + ['成功'])
         client = QwenSummarizer(chain, settings.max_attempts, settings.retry_delay)
         self.assertEqual(client.summarize({'total': 1}), '成功')
         self.assertEqual(len(chain.calls), 5)
 
-    def test_model_chain_receives_original_model_directory(self):
-        from pathlib import Path
-        settings = Settings(Path('original-model'), max_new_tokens=512)
+    def test_model_chain_uses_cloud_settings(self):
+        settings = Settings(api_key='test-key', base_url='https://example.test/v1', model='qwen3.8-27b')
         with patch('llm.qwen_client.build_chain', return_value=FakeChain(['ok'])) as build:
             client = QwenSummarizer.from_settings(settings)
-        build.assert_called_once_with(Path('original-model'), 512)
+        build.assert_called_once_with(settings)
         self.assertEqual(client.summarize({'total': 1}), 'ok')
+
+    def test_stream_collects_final_content_not_reasoning(self):
+        from types import SimpleNamespace as N
+        from llm.qwen_client import CloudChain
+        chunks = [N(choices=[N(delta=N(content=None, reasoning_content='private'))]),
+                  N(choices=[N(delta=N(content='第一部分'))]),
+                  N(choices=[N(delta=N(content='第二部分'))])]
+        calls = []
+        def create(**kwargs):
+            calls.append(kwargs)
+            return iter(chunks)
+        sdk = N(chat=N(completions=N(create=create)))
+        chain = CloudChain(sdk, 'qwen3.8-27b', '系统', prompt=type('P', (), {'format': lambda self, **kw: '用户'})())
+        self.assertEqual(chain.invoke({'total': 1}), '第一部分第二部分')
+        self.assertFalse(calls[0]['extra_body']['enable_thinking'])
+        self.assertTrue(calls[0]['stream'])
 
     def test_prompt_files_load_from_any_working_directory(self):
         previous = os.getcwd()
@@ -91,7 +106,7 @@ class SummarizerTests(unittest.TestCase):
         self.assertEqual(chain.calls[0]['daily'], [])
 
     def test_nonpositive_attempts_are_rejected(self):
-        with patch.dict('os.environ', {'QWEN_MAX_ATTEMPTS': '0'}):
+        with patch.dict('os.environ', {'QWEN_MAX_ATTEMPTS': '0', 'DASHSCOPE_API_KEY': 'test-key'}):
             with self.assertRaises(ValueError):
                 Settings.load()
         with self.assertRaises(ValueError):

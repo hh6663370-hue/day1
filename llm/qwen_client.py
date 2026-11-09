@@ -1,42 +1,48 @@
-"""用 LangChain 和本地 Transformers 模型总结已准备好的数据。"""
+"""使用 LangChain 提示词和百炼 OpenAI 兼容接口总结数据。"""
 import logging
 import time
-from pathlib import Path
 
 from llm.prompt import build_user_prompt, load_system_prompt
 
 logger = logging.getLogger(__name__)
 
 
-def build_chain(model_path: Path, max_new_tokens: int = 2048):
-    """加载本地模型，并组装 Jinja 提示词和 Transformers 推理组件。"""
-    if not model_path.is_dir():
-        raise FileNotFoundError(f'模型目录不存在: {model_path}')
-    from langchain_core.runnables import RunnableLambda
-    from langchain_huggingface import HuggingFacePipeline
-    from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
+class CloudChain:
+    """通过流式接口收集最终回答，不输出思考过程。"""
+    def __init__(self, client, model, system_prompt, prompt, max_tokens=2048):
+        self.client, self.model = client, model
+        self.system_prompt, self.prompt = system_prompt, prompt
+        self.max_tokens = max_tokens
 
-    # 只从本地目录读取权重，并自动分配设备和模型精度。
-    tokenizer = AutoTokenizer.from_pretrained(str(model_path), local_files_only=True)
-    model = AutoModelForCausalLM.from_pretrained(
-        str(model_path), local_files_only=True, device_map='auto', torch_dtype='auto'
-    )
-    generator = pipeline(
-        'text-generation', model=model, tokenizer=tokenizer,
-        max_new_tokens=max_new_tokens, do_sample=False, return_full_text=False,
-    )
-    prompt = build_user_prompt()
-    system_prompt = load_system_prompt()
-
-    def format_chat(value):
-        # 使用 Qwen 自带的模板构造带角色的对话。
-        return tokenizer.apply_chat_template(
-            [{'role': 'system', 'content': system_prompt},
-             {'role': 'user', 'content': value.to_string()}],
-            tokenize=False, add_generation_prompt=True,
+    def invoke(self, values):
+        user_prompt = self.prompt.format(**values)
+        stream = self.client.chat.completions.create(
+            model=self.model,
+            messages=[{'role': 'system', 'content': self.system_prompt},
+                      {'role': 'user', 'content': user_prompt}],
+            extra_body={'enable_thinking': False}, stream=True,
+            max_tokens=self.max_tokens,
         )
+        pieces = []
+        for chunk in stream:
+            if not chunk.choices:
+                continue
+            choice = chunk.choices[0]
+            if getattr(choice, 'finish_reason', None) == 'length':
+                raise ValueError('模型输出被长度限制截断，请增大 QWEN_MAX_NEW_TOKENS')
+            text = choice.delta.content
+            if text:
+                pieces.append(text)
+        return ''.join(pieces)
 
-    return prompt | RunnableLambda(format_chat) | HuggingFacePipeline(pipeline=generator)
+
+def build_chain(settings):
+    """建立百炼客户端并加载 LangChain Jinja 用户模板。"""
+    from openai import OpenAI
+    client = OpenAI(api_key=settings.api_key, base_url=settings.base_url,
+                    timeout=settings.timeout, max_retries=0)
+    return CloudChain(client, settings.model, load_system_prompt(),
+                      build_user_prompt(), settings.max_new_tokens)
 
 
 class QwenSummarizer:
@@ -50,9 +56,8 @@ class QwenSummarizer:
 
     @classmethod
     def from_settings(cls, settings):
-        """根据配置创建模型链；模型加载失败会直接向上抛出。"""
-        # 模型只加载一次；调用失败时只重试生成，不重复加载模型。
-        chain = build_chain(settings.model_path, settings.max_new_tokens)
+        """根据配置创建百炼调用链。"""
+        chain = build_chain(settings)
         return cls(chain, settings.max_attempts, settings.retry_delay)
 
     def summarize(self, data):
