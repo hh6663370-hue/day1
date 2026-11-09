@@ -1,0 +1,15 @@
+{
+  "start": "2026-10-01", "end": "2026-10-02", "days": 2,
+  "total": 2, "tickets": 2, "people": 2, "avg_per_day": 1,
+  "peak_date": "2026-10-01", "peak_value": 1,
+  "repeat_threshold": 2, "repeat_count": 0,
+  "daily": [
+    {"date": "2026-10-01", "count": 1, "tickets": 1, "people": 1},
+    {"date": "2026-10-02", "count": 1, "tickets": 1, "people": 1}
+  ],
+  "people_top5": [
+    {"name": "张三", "count": 1, "percentage": "50%"},
+    {"name": "李四", "count": 1, "percentage": "50%"}
+  ],
+  "devices_top5": [], "anomalies": []
+}

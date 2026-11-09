@@ -1,0 +1,8 @@
+langchain-core>=0.3,<2
+python-dotenv>=1.0
+modelscope>=1.40,<2
+jinja2>=3.1,<4
+langchain-huggingface>=0.1,<2
+transformers>=4.45,<5
+torch>=2.6
+accelerate>=1.0

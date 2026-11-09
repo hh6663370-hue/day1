@@ -1,0 +1,37 @@
+统计区间：{{ start }} 至 {{ end }}，共 {{ days }} 天
+数据来源：换机工单系统
+记录总数：{{ total }} 条
+
+【核心指标】
+- 换机总量：{{ total }} 台
+- 涉及工单：{{ tickets }} 个
+- 参与更换人：{{ people }} 人
+- 日均换机：{{ avg_per_day }} 台
+- 单日最高：{{ peak_date }}，{{ peak_value }} 台
+- 重复换机设备（≥{{ repeat_threshold }} 次）：{{ repeat_count }} 台
+
+【按日换机量】
+| 日期 | 换机量 | 工单数 | 更换人数 |
+|---|---|---|---|
+{% for row in daily %}| {{ row.date | default('数据不足', true) }} | {{ row.count | default('数据不足') }} | {{ row.tickets | default('数据不足') }} | {{ row.people | default('数据不足') }} |
+{% else %}数据不足
+{% endfor %}
+【更换人分布 Top5】
+{% for person in people_top5 %}{{ loop.index }}. {{ person.name | default('数据不足', true) }} {{ person.count | default('数据不足') }} 单（{{ person.percentage | default('数据不足', true) }}）
+{% else %}数据不足
+{% endfor %}
+【高频换机设备 Top5】
+{% for device in devices_top5 %}{{ loop.index }}. {{ device.sn | default('数据不足', true) }} {{ device.count | default('数据不足') }} 次，涉及 {{ device.tickets | default('数据不足') }} 个工单
+{% else %}数据不足
+{% endfor %}
+【系统已判定的异常】（直接采用，不要另行判断）
+{% for anomaly in anomalies %}- {{ anomaly }}
+{% else %}数据不足
+{% endfor %}
+请严格按以下结构输出：
+## 一、总体概览
+## 二、换机量趋势
+## 三、人员分布
+## 四、高频换机设备
+## 五、异常与风险
+## 六、改进建议

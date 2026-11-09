@@ -1,0 +1,3 @@
+-r requirements.txt
+# NVIDIA GPU：安装来自 PyTorch 官方 CUDA 12.8 索引的版本
+torch==2.11.0+cu128
